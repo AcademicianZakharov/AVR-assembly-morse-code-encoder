@@ -1,4 +1,4 @@
-; a2_morse.asm
+; morse_encoder.asm
 ; Author: Gabriel Maryshev
 
 .include "m2560def.inc"
