@@ -1,191 +1,535 @@
-/* gopipe.c
- *
- *
- * Author: Gabriel Maryshev
- */
+; a2_morse.asm
+; Author: Gabriel Maryshev
 
-#include <unistd.h>
-#include <string.h>
-#include <stdlib.h>
-#include <wait.h>
-#define MAX_INPUT_LINE 80
+.include "m2560def.inc"
 
-void pipe4(char **cmd_1, char** cmd_2, char** cmd_3, char** cmd_4){
-    int status;
-    int pid_1, pid_2, pid_3, pid_4;
-    int fd_1[2], fd_2[2], fd_3[2];//idea to use multiple fds is from chatgpt
+.cseg
+.equ S_DDRB=0x24
+.equ S_PORTB=0x25
+.equ S_DDRL=0x10A
+.equ S_PORTL=0x10B
 
-    (void)pipe(fd_1); 
-    (void)pipe(fd_2);
-    (void)pipe(fd_3);
-    //4 forks and execvps for 4 commands
-    if ((pid_1 = fork()) == 0) {
-        (void)dup2(fd_1[1], 1);
-        (void)close(fd_1[0]);close(fd_1[1]);close(fd_2[0]);close(fd_2[1]);close(fd_3[0]);close(fd_3[1]);
-        (void)execvp(cmd_1[0], cmd_1);
-    }
+.org 0
+        ; Copy test encoding (of 'sos') into SRAM
+        ;
+        ldi ZH, high(TESTBUFFER)
+        ldi ZL, low(TESTBUFFER)
+        ldi r16, 0x22
+        st Z+, r16
+        ldi r16, 0x31
+        st Z+, r16
+        ldi r16, 0x41
+        st Z+, r16
+        clr r16
+        st Z, r16
 
-    if ((pid_2 = fork()) == 0) {
-        (void)dup2(fd_1[0], 0);
-        (void)dup2(fd_2[1], 1);
-        close(fd_1[0]);close(fd_1[1]);close(fd_2[0]);close(fd_2[1]);close(fd_3[0]);close(fd_3[1]);
-        (void)execvp(cmd_2[0], cmd_2);
-    }
+        ; initialize run-time stack
+        ldi r17, high(0x21ff)
+        ldi r16, low(0x21ff)
+        out SPH, r17
+        out SPL, r16
 
-    if ((pid_3 = fork()) == 0) {
-        (void)dup2(fd_2[0], 0);
-        (void)dup2(fd_3[1], 1);
-        close(fd_1[0]);close(fd_1[1]);close(fd_2[0]);close(fd_2[1]);close(fd_3[0]);close(fd_3[1]);
-        (void)execvp(cmd_3[0], cmd_3);
-    }
+        ; initialize LED ports to output
+        ldi r17, 0xff
+        sts S_DDRB, r17
+        sts S_DDRL, r17
 
-    if ((pid_4 = fork()) == 0) {
-        (void)dup2(fd_3[0], 0);
-        close(fd_1[0]);close(fd_1[1]);close(fd_2[0]);close(fd_2[1]);close(fd_3[0]);close(fd_3[1]);
-        (void)execvp(cmd_4[0], cmd_4);
-    }
 
-    close(fd_1[0]);close(fd_1[1]);close(fd_2[0]);close(fd_2[1]);close(fd_3[0]);close(fd_3[1]);
+        //rjmp morse_flash
+/*      ldi r20, 'a'
+        push r20
+        call alphabet_encode
+        pop r20
+        mov r16, r0
+        call morse_flash
+        rjmp stop*/
 
-    (void)waitpid(pid_1, &status, 0);
-    (void)waitpid(pid_2, &status, 0);
-    (void)waitpid(pid_3, &status, 0);
-    (void)waitpid(pid_4, &status, 0);
-}
+        //rjmp morse_flash
+    ; The following seven lines are only for testing of your
+    ; code in part c. When you are confident that your part c
+    ; is working, you can then delete these seven lines. 
+/*      ldi r17, high(TESTBUFFER)
+        ldi r16, low(TESTBUFFER)
+        push r17
+        push r16
+                rcall flash_message
+    pop r16
+    pop r17
+        rjmp stop*/
 
-void pipe3(char** cmd_1, char** cmd_2, char** cmd_3){
-    int status;
-    int pid_1, pid_2, pid_3;
-    int fd_1[2], fd_2[2], fd_3[2];
+  
+; The only things you can change in this section is
+; the message (i.e., MESSAGE01 or MESSAGE02 or MESSAGE03,
+; etc., up to MESSAGE09).
+;
 
-    (void)pipe(fd_1);
-    (void)pipe(fd_2);
-    (void)pipe(fd_3);
+        ; encode a message
+        ;
+        ldi r17, high(MESSAGE02 << 1)
+        ldi r16, low(MESSAGE02 << 1)
+        push r17
+        push r16
+        ldi r17, high(BUFFER01)
+        ldi r16, low(BUFFER01)
+        push r17
+        push r16
+        rcall encode_message
+        pop r16
+        pop r16
+        pop r16
+        pop r16
 
-    if ((pid_1 = fork()) == 0) {
-        (void)dup2(fd_1[1], 1);
-        close(fd_1[0]);close(fd_1[1]);close(fd_2[0]);close(fd_2[1]);close(fd_3[0]);close(fd_3[1]);
-        (void)execvp(cmd_1[0], cmd_1);
-    }
+        ; display the message three times
+        ;
+        ldi r18, 3
+main_loop:
+        ldi r17, high(BUFFER01)
+        ldi r16, low(BUFFER01)
+        push r17
+        push r16
+        rcall flash_message
+        pop r16
+        pop r17
+        dec r18
+        tst r18
+        brne main_loop
 
-    if ((pid_2 = fork()) == 0) {
-        (void)dup2(fd_1[0], 0);
-        (void)dup2(fd_2[1], 1);
-        close(fd_1[0]);close(fd_1[1]);close(fd_2[0]);close(fd_2[1]);close(fd_3[0]);close(fd_3[1]);
-        (void)execvp(cmd_2[0], cmd_2);
-    }
 
-    if ((pid_3 = fork()) == 0) {
-        (void)dup2(fd_2[0], 0);
-        close(fd_1[0]);close(fd_1[1]);close(fd_2[0]);close(fd_2[1]);close(fd_3[0]);close(fd_3[1]);
-        (void)execvp(cmd_3[0], cmd_3);
-    }
 
-    close(fd_1[0]);close(fd_1[1]);close(fd_2[0]);close(fd_2[1]);close(fd_3[0]);close(fd_3[1]);
+stop:
+        rjmp stop
 
-    (void)waitpid(pid_1, &status, 0);
-    (void)waitpid(pid_2, &status, 0);
-    (void)waitpid(pid_3, &status, 0);
+flash_message:
 
-}
+                push ZL
+                push ZH
+                push YL
+                push YH
+                push r23
+                in YH, SPH
+                in YL, SPL
 
-void pipe2(char** cmd_1, char** cmd_2){
-    int status;
-    int pid_1, pid_2;
-    int fd_1[2], fd_2[2], fd_3[2];
+                ldd ZH, Y + 10 
+                ldd ZL, Y + 9
 
-    (void)pipe(fd_1);
-    (void)pipe(fd_2);
-    (void)pipe(fd_3);
+                //loops to until end of sequence
+                loopto0x00:
+                        ld r23, Z+
+                        mov r16, r23
+                        call morse_flash
+                        cpi r23, 0x00
+                        brne loopto0x00
 
-    if ((pid_1 = fork()) == 0) {
-        (void)dup2(fd_1[1], 1);
-        close(fd_1[0]);close(fd_1[1]);close(fd_2[0]);close(fd_2[1]); close(fd_3[0]); close(fd_3[1]);
-        (void)execvp(cmd_1[0], cmd_1);
-    }
+                morse_flashend:
+                        pop r23
+                        pop YH
+                        pop YL
+                        pop ZH
+                        pop ZL
+        ret
 
-    if ((pid_2 = fork()) == 0) {
-        (void)dup2(fd_1[0], 0);
-        close(fd_1[0]); close(fd_1[1]); close(fd_2[0]); close(fd_2[1]);close(fd_3[0]);close(fd_3[1]);
-        (void)execvp(cmd_2[0], cmd_2);
-    }
+morse_flash:
 
-    close(fd_1[0]);close(fd_1[1]);close(fd_2[0]);close(fd_2[1]);close(fd_3[0]);close(fd_3[1]);
+        push r16
+        push r25
+        push r27
+        push r19
+        push r28
+        cpi r16, 0x00
+        breq quit
+        mov r16, r0
 
-    (void)waitpid(pid_1, &status, 0);
-    (void)waitpid(pid_2, &status, 0);    
-}
+        //ldi r16, 0x21
+        ldi r25, 0x04 //count
 
-void pipe1(char** cmd_1){
-    (void)execvp(cmd_1[0], cmd_1);    
-}
+        looptogetnibble:
+                lsr r16
+                ror r27//low nibble of r17
+                dec r25
+                cpi r25, 0x00
+                brne looptogetnibble
 
-int main() {
-    char input[4][MAX_INPUT_LINE];
-    int usedLines = 0;
-    //read the input
-    //here chatgpt helped me fix null characters
-    for (int l = 0; l < 4; l++) {
-        ssize_t bytesRead = read(0, input[l], sizeof(input[l]));
-        if (bytesRead <= 0) {
-            break;
-        }
-        int lineLength = bytesRead / sizeof(char);
-        int writeIndex = 0;
-        for (int i = 0; i < lineLength; i++) {
-            if (input[l][i] != '\0') {
-                input[l][writeIndex++] = input[l][i];
-            }
-            if (input[l][i] == '\n') {
-                input[l][i] = '\0';
-            }
-        }
-        input[l][writeIndex] = '\0';
-        if (input[l][0] == '\n') {
-            break;
-        }
-        if(bytesRead == 1) {
-            break;
-        }
-        usedLines++;
-    }
-    //end of some code from chatgpt
-    //tokenize the input most code from appendix d
-    char *token[MAX_NUM_TOKENS];
-    char *t;
-    int  num_tokens;
+        swap r27
+                 
+/*      ldi r25,0x08
+        reverseloop:
+                lsl r27
+                ror r19
+                dec r25
+                cpi r25, 0x00
+                brne reverseloop
+        swap r19
+        mov r27, r19*/
 
-    char *tknarray[50][50];
-    for(int j = 0; j < usedLines; j++){
-        num_tokens = 0;
-        t = strtok(input[j], " ");
-        while (t != NULL && num_tokens < MAX_NUM_TOKENS) {
-            token[num_tokens] = t;
-            num_tokens++;
-            t = strtok(NULL, " ");
-        }
-        for (int w = 0; w < num_tokens; w++) {
-            tknarray[w][j] = token[w];
-        }
-        
-    }
-    char *cmd_1[] = { tknarray[0][0], tknarray[1][0], tknarray[2][0], tknarray[3][0], tknarray[4][0] ,tknarray[5][0] ,tknarray[6][0] ,tknarray[7][0], tknarray[8][0], NULL};//used appendix c
-    char *cmd_2[] = { tknarray[0][1], tknarray[1][1], tknarray[2][1], tknarray[3][1], tknarray[4][1] ,tknarray[5][1] ,tknarray[6][1] ,tknarray[7][1], tknarray[8][1], NULL};//used appendix c
-    char *cmd_3[] = { tknarray[0][2], tknarray[1][2], tknarray[2][2], tknarray[3][2], tknarray[4][2] ,tknarray[5][2] ,tknarray[6][2] ,tknarray[7][2], tknarray[8][2], NULL};//used appendix c
-    char *cmd_4[] = { tknarray[0][3], tknarray[1][3], tknarray[2][3], tknarray[3][3], tknarray[4][3] ,tknarray[5][3] ,tknarray[6][3] ,tknarray[7][3], tknarray[8][3], NULL};//used appendix c
-    
-    //pipe input depending on number of lines entered
-    if(usedLines == 4){
-        pipe4(cmd_1, cmd_2, cmd_3, cmd_4);
-   }
-    else if(usedLines == 3){
-        pipe3(cmd_1, cmd_2, cmd_3);
-   }
-    else if(usedLines == 2){
-        pipe2(cmd_1, cmd_2);
-   }
-    else if(usedLines == 1){
-        pipe1(cmd_1);
-   }
-    return EXIT_SUCCESS;
-}
+        someloop:
+                mov r28, r27
+                andi r28, 0b00000001 
+                cpi r28, 0x01
+                breq dash
+                cont:
+                cpi r28, 0x00
+                breq dot
+                cont2:
+                lsr r27
+                dec r16
+                cpi r16, 0x00
+                brne someloop
+
+        quit:
+        pop r28
+        pop r19
+        pop r27
+        pop r25
+        pop r16
+        ret
+
+dot:
+        push r16
+        ldi r16, 0x01
+        call leds_on
+        call delay_short
+        call leds_off
+        call delay_long
+        pop r16
+        rjmp cont2
+
+dash:
+        push r16
+        ldi r16, 0x06
+        call leds_on
+        call delay_long
+        call leds_off
+        call delay_long
+        pop r16
+        rjmp cont
+
+
+leds_on:
+        push r16
+        push r20
+        push r21
+
+        cpi r16, 0x00
+        breq zeroleds
+        cpi r16, 0x01
+        breq oneleds
+        cpi r16, 0x02
+        breq twoleds
+        cpi r16, 0x03
+        breq threeleds
+        cpi r16, 0x04
+        breq fourleds
+        cpi r16, 0x05
+        breq fiveleds
+        cpi r16, 0x06
+        breq sixleds
+
+        zeroleds:
+                ldi r20, 0x00
+                ldi r21, 0x00
+                sts S_PORTL, r20
+                sts S_PORTB, r21
+                rjmp quitleds
+
+        oneleds:
+                ldi r20, 0x00
+                ldi r21, 0x02
+                sts S_PORTL, r20
+                sts S_PORTB, r21
+                clr r21
+                rjmp quitleds
+
+
+        twoleds:
+                ldi r20, 0x00
+                ldi r21, 0x0a
+                sts S_PORTL, r20
+                sts S_PORTB, r21
+                clr r21
+                rjmp quitleds
+
+
+        threeleds:
+                ldi r20, 0x02
+                ldi r21, 0x0a
+                sts S_PORTL, r20
+                sts S_PORTB, r21
+                rjmp quitleds
+
+
+        fourleds:
+                ldi r20, 0x0a
+                ldi r21, 0x0a
+                sts S_PORTL, r20
+                sts S_PORTB, r21
+                rjmp quitleds
+
+
+
+        fiveleds:
+                ldi r20, 0x3e
+                ldi r21, 0x0a
+                sts S_PORTL, r20
+                sts S_PORTB, r21
+                rjmp quitleds
+
+        sixleds:
+                ldi r20, 0xaa
+                ldi r21, 0x0a
+                sts S_PORTL, r20
+                sts S_PORTB, r21
+                rjmp quitleds
+
+
+        quitleds:
+                pop r21
+                pop r20
+                pop r16
+                ret
+
+leds_off:
+        ldi r20, 0x00
+        sts S_PORTL, r20
+        sts S_PORTB, R20
+        ret
+
+
+encode_message:
+                push ZL
+                push ZH
+                push YL
+                push YH
+                push r16
+                push r17
+                push r18
+
+                in YH, SPH
+                in YL, SPL
+
+                ldd ZH, Y + 14
+                ldd ZL, Y + 13
+
+                ldd XH, Y + 12
+                ldd XL, Y + 11
+
+
+                looptopush:
+                        lpm r16, Z+
+                        cpi r16, 0x00
+                        breq end_encodemsg
+                        push ZH
+                        push ZL
+                        push r16
+                        call alphabet_encode
+
+                        pop r16
+                        pop ZL
+                        POP ZH
+                        st x+, r16
+                        brne looptopush
+
+
+                end_encodemsg:
+                pop r18
+                pop r17
+                pop r16
+                pop YH
+                POP YL
+                POP ZH
+                POP ZL
+                ldi r16, 0x00
+                st x, r16
+
+        ret
+
+
+alphabet_encode:
+
+/*      Z = ITU_MORSE
+        while (mem[Z] != 0)
+                if mem[Z] equals letter-to-be-converted:
+                        Z = Z + 1
+                        while mem[Z] != 0:
+                                do something if mem[Z] is a dot or
+                                        do something else if mem[Z] is a dash
+                                Z = Z + 1
+                        finished (i.e., break out of outermost loop)
+                Z = Z + 8*/
+
+//stack pointer to the letter in stack
+//another pointer to the memory that stores the aphabet table
+//do +8 to get next letter in table adiw
+//compare that to stack pointer
+
+
+                push ZL
+                push ZH
+                push YL
+                push YH
+                push r23
+                push r16
+                push r17
+                push r18
+                push r19
+                push r20
+                in YH, SPH
+                in YL, SPL
+
+                clr r20
+                ldd r23, Y + 14
+                ldi ZL, low(ITU_MORSE << 1)
+                ldi ZH, high(ITU_MORSE << 1)
+
+                ldi r18, 0x05
+
+                loopforchar:
+                        lpm r16, Z+
+                        cp r16, r23
+                        breq getdotdash
+                        forcharcont:
+                        dec r18
+                        cpi r18, 0x00
+                        brne loopforchar
+                        rjmp doned
+
+
+                getdotdash:
+                        lpm r16, Z+
+                        cpi r16, 0x2e
+                        breq dodot
+                        cpi r16, 0x2d
+                        breq dodash
+                        cpi r16, 0x00
+                        rjmp forcharcont
+
+                dodot:
+                        inc r19
+
+                        rjmp getdotdash
+
+
+                dodash:
+                        inc r19
+                        lsl r20
+                        inc r20
+                        rjmp getdotdash
+                doned:
+                        swap r19
+                        add r19, r20
+                        mov r0, r19
+                        mov r16, r19
+
+
+
+                endencode:
+                        pop r20
+                        pop r19
+                        pop r18
+                        pop r17
+                        pop r16
+                        pop r23
+                        pop YH
+                        pop YL
+                        pop ZH
+                        pop ZL
+
+        ret      
+
+delay_long:
+        rcall delay
+        rcall delay
+        rcall delay
+        ret
+
+delay_short:
+        rcall delay
+        ret
+
+; When wanting about a 1/5th of second delay, all other
+; code must call this function
+;
+delay:
+        rcall delay_busywait
+        ret
+
+
+; This function is ONLY called from "delay", and
+; never directly from other code.
+;
+delay_busywait:
+        push r16
+        push r17
+        push r18
+
+        ldi r16, 0x08
+delay_busywait_loop1:
+        dec r16
+        breq delay_busywait_exit
+
+        ldi r17, 0xff
+delay_busywait_loop2:
+        dec     r17
+        breq delay_busywait_loop1
+
+        ldi r18, 0xff
+delay_busywait_loop3:
+        dec r18
+        breq delay_busywait_loop2
+        rjmp delay_busywait_loop3
+
+delay_busywait_exit:
+        pop r18
+        pop r17
+        pop r16
+        ret
+
+
+.org 0x1000
+
+ITU_MORSE: .db "a", ".-", 0, 0, 0, 0, 0
+        .db "b", "-...", 0, 0, 0
+        .db "c", "-.-.", 0, 0, 0
+        .db "d", "-..", 0, 0, 0, 0
+        .db "e", ".", 0, 0, 0, 0, 0, 0
+        .db "f", "..-.", 0, 0, 0
+        .db "g", "--.", 0, 0, 0, 0
+        .db "h", "....", 0, 0, 0
+        .db "i", "..", 0, 0, 0, 0, 0
+        .db "j", ".---", 0, 0, 0
+        .db "k", "-.-", 0, 0, 0, 0
+        .db "l", ".-..", 0, 0, 0
+        .db "m", "--", 0, 0, 0, 0, 0
+        .db "n", "-.", 0, 0, 0, 0, 0
+        .db "o", "---", 0, 0, 0, 0
+        .db "p", ".--.", 0, 0, 0
+        .db "q", "--.-", 0, 0, 0
+        .db "r", ".-.", 0, 0, 0, 0
+        .db "s", "...", 0, 0, 0, 0
+        .db "t", "-", 0, 0, 0, 0, 0, 0
+        .db "u", "..-", 0, 0, 0, 0
+        .db "v", "...-", 0, 0, 0
+        .db "w", ".--", 0, 0, 0, 0
+        .db "x", "-..-", 0, 0, 0
+        .db "y", "-.--", 0, 0, 0
+        .db "z", "--..", 0, 0, 0
+        .db 0, 0, 0, 0, 0, 0, 0, 0
+
+MESSAGE01: .db "a a a", 0
+MESSAGE02: .db "sos", 0
+MESSAGE03: .db "a box", 0
+MESSAGE04: .db "dairy queen", 0
+MESSAGE05: .db "the shape of water", 0, 0
+MESSAGE06: .db "top gun maverick", 0, 0
+MESSAGE07: .db "obi wan kenobi", 0, 0
+MESSAGE08: .db "oh canada our own and native land", 0
+MESSAGE09: .db "is that your final answer", 0
+
+; First message ever sent by Morse code (in 1844)
+MESSAGE10: .db "what god hath wrought", 0
+
+
+.dseg
+.org 0x200
+BUFFER01: .byte 128
+BUFFER02: .byte 128
+TESTBUFFER: .byte 4
